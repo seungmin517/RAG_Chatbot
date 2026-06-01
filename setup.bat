@@ -7,19 +7,56 @@ echo ====================================
 
 :: [1] Python ---------------------------------------------------------
 set PYTHON=
-py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
-if %errorlevel% equ 0 set PYTHON=py -3
+set PY_VERSION=3.12.10
+set PY_INSTALLER=%TEMP%\python-setup.exe
+set PY_URL=https://www.python.org/ftp/python/%PY_VERSION%/python-%PY_VERSION%-amd64.exe
 
-if "%PYTHON%"=="" (
-    python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
-    if %errorlevel% equ 0 set PYTHON=python
+:check_python
+py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if %errorlevel% equ 0 (
+    set PYTHON=py -3
+    goto :python_ok
 )
 
-if "%PYTHON%"=="" (
-    echo [ERROR] Python not found. Install Python 3.10+ from https://python.org
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if %errorlevel% equ 0 (
+    set PYTHON=python
+    goto :python_ok
+)
+
+:: Python not found - download and install
+echo Python 3.10+ not found. Downloading Python %PY_VERSION%...
+
+where curl >nul 2>&1
+if %errorlevel% equ 0 (
+    curl -L --progress-bar -o "%PY_INSTALLER%" "%PY_URL%"
+) else (
+    powershell -Command "Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%PY_INSTALLER%'"
+)
+
+if not exist "%PY_INSTALLER%" (
+    echo [ERROR] Python download failed. Install manually: https://python.org
     pause
     exit /b 1
 )
+
+echo Installing Python %PY_VERSION%...
+"%PY_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
+del /f /q "%PY_INSTALLER%" >nul 2>&1
+
+:: Refresh PATH from registry after install
+for /f "delims=" %%i in ('powershell -Command "[Environment]::GetEnvironmentVariable('Path','User')"') do set "PATH=%%i;%PATH%"
+
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Python install failed. Install manually: https://python.org
+    pause
+    exit /b 1
+)
+set PYTHON=python
+echo Python %PY_VERSION% installed OK.
+
+:python_ok
 echo [1/4] Python OK  (%PYTHON%)
 
 :: [2] venv -----------------------------------------------------------
